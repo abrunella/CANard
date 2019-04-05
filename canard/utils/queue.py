@@ -5,7 +5,7 @@ This module provides a queue-based method of interaction with the CAN bus. Incom
 """
 
 from canard import can
-import multiprocessing
+import threading
 
 try:
     import queue
@@ -16,7 +16,7 @@ import time
 
 
 def indirect_caller(instance, name, args=(), kwargs=None):
-    """Indirect function caller for instance methods and multiprocessing to make CanQueue pickleable"""
+    """Indirect function caller for instance methods and threading"""
     if kwargs is None:
         kwargs = {}
     return getattr(instance, name)(*args, **kwargs)
@@ -26,11 +26,11 @@ class CanQueue:
     """Queue-based interface to the CAN bus"""
 
     def __init__(self, can_dev, maxsize=0):
-        self.can_dev = can_dev
-        self.recv_process = multiprocessing.Process(target=indirect_caller, args=(self, 'recv_task'))
-        self.send_process = multiprocessing.Process(target=indirect_caller, args=(self, 'send_task'))
-        self.recv_queue = multiprocessing.Queue(maxsize=maxsize)
-        self.send_queue = multiprocessing.Queue(maxsize=maxsize)
+        self.can_dev = can_dev       
+        self.recv_process = threading.Thread(target=indirect_caller, args=(self, 'recv_task'))
+        self.send_process = threading.Thread(target=indirect_caller, args=(self, 'send_task'))
+        self.recv_queue = queue.Queue(maxsize=maxsize)
+        self.send_queue = queue.Queue(maxsize=maxsize)
 
     def start(self):
         """Start the CAN device and queue processes"""
