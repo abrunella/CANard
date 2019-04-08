@@ -27,21 +27,30 @@ class CanQueue:
 
     def __init__(self, can_dev, maxsize=0):
         self.can_dev = can_dev       
-        self.recv_process = threading.Thread(target=indirect_caller, args=(self, 'recv_task'))
-        self.send_process = threading.Thread(target=indirect_caller, args=(self, 'send_task'))
+        self.recv_thread = threading.Thread(target=indirect_caller, args=(self, 'recv_task'))
+        self.send_thread = threading.Thread(target=indirect_caller, args=(self, 'send_task'))
         self.recv_queue = queue.Queue(maxsize=maxsize)
         self.send_queue = queue.Queue(maxsize=maxsize)
-
+        self._recv_stopevent = threading.Event()
+        self._send_stopevent = threading.Event()
+        
+        
     def start(self):
         """Start the CAN device and queue processes"""
         self.can_dev.start()
-        self.recv_process.start()
-        self.send_process.start()
+        self.recv_thread.start()
+        self.send_thread.start()
 
     def stop(self):
         """Stop the CAN device and queue processes"""
-        self.recv_process.terminate()
-        self.send_process.terminate()
+        
+        # Stop the receive thread
+        self._recv_stopevent.set()
+        self.recv_thread.join(1)
+        
+        # Stop the send thread
+        self._send_stopevent.set()
+        self.send_thread.join(1)
         self.can_dev.stop()
 
     def send(self, msg):
@@ -81,14 +90,15 @@ class CanQueue:
 
     def recv_task(self):
         """CAN receiver, called by the receive process"""
-        while True:
+        while not self._recv_stopevent.isSet():
             msg = self.can_dev.recv()
             self.recv_queue.put(msg)
-
+           
     def send_task(self):
         """CAN transmitter, called by the transmit process"""
-        while True:
-            msg = self.send_queue.get()
-            self.can_dev.send(msg)
-
-
+        while not self._send_stopevent.isSet():
+            try:
+                msg = self.send_queue.get(timeout=0.1)
+                self.can_dev.send(msg)
+            except queue.Empty:
+                continue
